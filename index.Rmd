@@ -1,34 +1,141 @@
 ---
-title: "Practical Machine Learning Course Project"
-author: "Ayaz Ahmad"
-date: "April 11, 2019"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+# Practical Machine Learning - Course Project
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the quality of exercises.
+
+
+
+# Overview:
+The goal of project is to predict the manner in which subjects did the exercise. Create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+# Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+# Packages
+```{r}
+library(caret)
+library(ggplot2)
+library(rpart)
+library(rattle)
+library(e1071)
+
 ```
 
-## R Markdown
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
+# Data Loading
 
 ```{r}
-rnorm(100)
+#setwd("/cloud/project/08_PracticalMachineLearning/course-project")
+training<-read.csv('./pml-training.csv')
+testing<-read.csv('./pml-testing.csv')
+dim(training)
+dim(testing)
+```
+```{r}
+names(training)[1:10]
+table(training$classe)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+# Data preprocessing
+
+## Remove columns which are all zeroes
+```{r}
+training<-training[, colSums(is.na(training))==0]
+dim(training)
+```
+
+## Columns 1 to 7 have no impact on classe so remove them
+```{r}
+training<-training[, -c(1:7)]
+dim(training)
+```
+
+## Create training and test set (called training1 and training2 here)
+```{r}
+inTrain <- createDataPartition(training$classe, p = 0.7, list = FALSE)
+training1 <- training[inTrain, ]
+training2 <- training[-inTrain, ]
+dim(training1)
+dim(training2)
+```
+
+## Removing columns that have Near Zero variance
+```{r}
+NZV <- nearZeroVar(training1)
+training1 <- training1[, -NZV]
+training2  <- training2[, -NZV]
+dim(training1)
+dim(training2)
+```
+
+## Create a correlation matrix. Retain only those values in the matrix that have high correlation ( > 0.8)
+```{r}
+M <- abs(cor(training1[,-53]))
+diag(M) <- 0
+which(M > 0.8,arr.ind=T)
+```
+
+
+# Predicting with classification trees:
+
+```{r}
+dt_model <- rpart(classe ~ ., data=training1, method="class")
+fancyRpartPlot(dt_model)
+```
+
+predict on training2 data:
+
+```{r}
+prediction <- predict(dt_model, training2, type = "class")
+cm <- confusionMatrix(prediction, training2$classe)
+cm
+```
+
+# Predicting with random forest:
+
+```{r}
+#library(caret)
+rf_tc <- trainControl(method="cv", number=3, verboseIter = FALSE)
+rf_model <- train(classe ~ ., data=training1, method="rf", trControl=rf_tc)
+rf_model$finalModel
+```
+
+## prediction on Test dataset
+```{r}
+rf_predict <- predict(rf_model, newdata=training2)
+rf_cm <- confusionMatrix(rf_predict, training2$classe)
+rf_cm
+```
+
+
+# Predicting with gradient boosting method:
+
+```{r}
+gbm_tc <- trainControl(method="cv", number=3, verboseIter = FALSE)
+gbm_model <- train(classe ~ ., data=training1, method="gbm", trControl=gbm_tc)
+gbm_model$finalModel
+```
+
+## prediction on Test dataset
+```{r}
+# prediction on Test dataset
+gbm_predict <- predict(gbm_model, newdata=training2)
+gbm_cm <- confusionMatrix(gbm_predict, training2$classe)
+gbm_cm
+```
+
+
+# Apply the selected model to predict on validation data
+
+
+
+
+```{r}
+final_prediction <- predict(rf_model, newdata=testing)
+final_prediction
+```
